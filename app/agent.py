@@ -1,19 +1,18 @@
 from app.llm import chat_with_tools
 from tools.executor import execute_tool
 import logging
+from app.db import save_message, load_history
 logger  =   logging.getLogger(__name__)
 iterations = 5
-def run_agent(user_message: str,max_iterations: int = iterations):
+def run_agent(user_message: str,session_id: str = "default_session",max_iterations: int = iterations):
+
+
+    history = load_history(session_id)
 
     messages = [
-        {
-            "role": "system",
-            "content": "You are a helpful assistant."
-        },
-        {
-            "role": "user",
-            "content": user_message
-        }
+        {"role": "system","content": "You are a helpful assistant."},
+        *history,
+        {"role": "user", "content": user_message }
     ]
     logger.info(f"用户消息: {user_message}")
 
@@ -24,6 +23,8 @@ def run_agent(user_message: str,max_iterations: int = iterations):
 
         # 2. 没有 Tool Call，说明得到最终答案
         if not response.tool_calls:
+            save_message(session_id, "user", user_message)
+            save_message(session_id, "assistant", response.content)
             return response.content
 
         # 3. 保存 Assistant 的 Tool Call
@@ -55,5 +56,8 @@ def run_agent(user_message: str,max_iterations: int = iterations):
                 "tool_call_id": tool_call.id,
                 "content": str(result)
             })
+  
     logger.warning(f"达到最大迭代次数")
+    save_message(session_id, "user", user_message)                # ← 补这两行
+    save_message(session_id, "assistant", "达到最大迭代次数，未能得到最终答案。")
     return "达到最大迭代次数，未能得到最终答案。"

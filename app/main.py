@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from app.agent import run_agent
 from app.schema import ChatRequest, ChatResponse
 import logging
+from app.db import init_db
 logging.basicConfig(level=logging.INFO)
 
 
@@ -11,6 +12,9 @@ app = FastAPI(
     version = "0.1.0"
 )
 
+@ app.on_event("startup")
+async def startup():
+    init_db()
 @app.get('/health')
 def health():
     return {
@@ -20,5 +24,5 @@ def health():
 
 @app.post("/api/chat",response_model = ChatResponse)
 async def chat_endpoint(request:ChatRequest):
-    reply = run_agent(request.message)
+    reply = run_agent(request.message,session_id = request.session_id) #
     return {"reply": reply}
