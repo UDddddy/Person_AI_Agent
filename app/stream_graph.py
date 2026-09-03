@@ -24,8 +24,8 @@ from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 
-from config import setting
-from graph_state import AgentState
+from app.config import setting
+from app.graph_state import AgentState
 from tools.executor import execute_tool
 from tools.registry import TOOL_SCHEMA
 

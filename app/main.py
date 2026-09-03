@@ -1,6 +1,5 @@
 
 from fastapi import FastAPI
-from app.agent import run_agent
 from app.graph_agent import get_checkpointer, run_graph_agent
 from app.schema import ChatRequest, ChatResponse
 import logging
@@ -23,24 +22,19 @@ def health():
     }
 
 
-@app.post("/api/chat",response_model = ChatResponse)
-async def chat_endpoint(request:ChatRequest):
-    reply = run_agent(request.message,session_id = request.session_id) #
-    return {"reply": reply}
-
-
-@app.post("/api/chat_graph",response_model = ChatResponse)
-def chat_graph_endpoint(request:ChatRequest):
-    """LangGraph 版 Agent（阶段 3）：带 Checkpoint 会话持久化。
+@app.post("/api/chat", response_model=ChatResponse)
+def chat_endpoint(request: ChatRequest):
+    """统一入口：LangGraph 版 Agent（阶段 3），带 Checkpoint 会话持久化。
 
     用 with 打开 SqliteSaver，session_id 映射为 thread_id，
     同一 session_id 的对话历史可跨请求/重启恢复。
+    （原手写 Loop 版 run_agent 已退役，保留在 app/agent.py 作学习对照）
     """
     with get_checkpointer() as checkpointer:
         reply = run_graph_agent(
             request.message,
-            session_id = request.session_id,
-            checkpointer = checkpointer,
+            session_id=request.session_id,
+            checkpointer=checkpointer,
         )
     return {"reply": reply}
 
@@ -48,7 +42,7 @@ def chat_graph_endpoint(request:ChatRequest):
 # ===========================================================================
 # 【新增 · 阶段 3 SSE 流式端点】由指导侧写入
 # ===========================================================================
-# 对比 /api/chat_graph：那个端点是"等全部生成完再返回"，
+# 对比 /api/chat：那个端点是"等全部生成完再返回"，
 # 这个端点是"生成一个推一个"，前端用 EventSource 逐 token 接收（打字机效果）。
 # 响应格式为 SSE（Server-Sent Events）：每条事件 "data: {json}\n\n"。
 # 事件 type：
@@ -66,7 +60,7 @@ async def chat_graph_stream_endpoint(request: ChatRequest):
     """SSE 流式版 Agent：同一 session_id 的历史可跨请求恢复（Checkpoint）。"""
     async def event_generator():
         try:
-            # 与 /api/chat_graph 一致：with 打开 SqliteSaver 做会话持久化
+            # 与 /api/chat 一致：with 打开 SqliteSaver 做会话持久化
             with stream_get_checkpointer() as checkpointer:
                 for event_type, data in stream_graph_events(
                     request.message,

@@ -1,13 +1,11 @@
 """阶段 3 联调脚本：用真实 LLM 验证 LangGraph Agent（绕开终端中文乱码）。"""
 
-import json
 import sys
 import io
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
 from app.graph_agent import run_graph_agent
-from app.graph_agent import graph, build_graph
 
 
 def main():
