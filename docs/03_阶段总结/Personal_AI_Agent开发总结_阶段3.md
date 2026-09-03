@@ -29,7 +29,7 @@
 | `app/graph_agent.py` | 🆕 新建 | LangGraph 图：agent 节点 / tools 节点 / 条件边 / build_graph / run_graph_agent / get_checkpointer |
 | `app/main.py` | ✏️ 修改 | 新增 `/api/chat_graph` 端点（保留原 `/api/chat`）；版本号 0.1.0 → 0.2.0 |
 | `test/test_graph_agent.py` | 🆕 新建 | 6 个测试：直接回答 / 工具链 / 条件边 / 工具节点 / checkpoint 持久化 / 会话隔离 |
-| `docs/阶段3_手写Loop痛点与LangGraph迁移.md` | 🆕 新建 | 迁移动机 + 迁移实践记录 |
+| `../02_阶段笔记/阶段3_手写Loop痛点与LangGraph迁移.md` | 🆕 新建 | 迁移动机 + 迁移实践记录 |
 | `demo/demo_graph_agent.py` | 🆕 新建 | 真实 LLM 联调脚本（问答/计算器/时间） |
 | `demo/demo_graph_checkpoint.py` | 🆕 新建 | Checkpoint 多轮记忆联调脚本 |
 | `requirements.txt` | ✏️ 修改 | +langgraph==1.2.11、langgraph-checkpoint-sqlite==3.1.1 |
