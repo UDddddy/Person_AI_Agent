@@ -30,11 +30,11 @@ from langgraph.graph import END, START, StateGraph
 from app.graph_state import AgentState
 from app.llm import client
 from app.config import setting
-from tools.executor import execute_tool
+from tools.pipeline import ToolPipeline
 from tools.registry import TOOL_SCHEMA
 
 logger = logging.getLogger(__name__)
-
+pipeline = ToolPipeline()   
 SYSTEM_PROMPT = "You are a helpful assistant."
 
 # Checkpoint 数据库固定放在 app/ 包内，避免启动目录不同导致建错位置
@@ -134,7 +134,7 @@ def tool_node(state: AgentState) -> dict:
     tool_messages = []
     for tc in last.tool_calls:
         logger.info("执行工具 %s，参数 %s", tc["name"], tc["args"])
-        result = execute_tool(tc["name"], tc["args"])
+        result = pipeline.execute(tc["name"], tc["args"])
         tool_messages.append(
             ToolMessage(content=str(result), tool_call_id=tc["id"], name=tc["name"])
         )
