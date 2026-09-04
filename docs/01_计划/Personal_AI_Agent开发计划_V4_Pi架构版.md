@@ -26,7 +26,8 @@ V4 保留已完成进度（阶段 0-3），把后续阶段按这三点重构。
 | 阶段 0 | V0 最小 Agent（FastAPI + LLM 闭环） | ✅ 完成 |
 | 阶段 1 | V1 工程化 Tool Agent（BaseTool + 注册表 + 有界循环） | ✅ 完成（Git 818daaf） |
 | 阶段 2 | V2 多轮对话 + SQLite 记忆 | ✅ 完成（Git 3da7add） |
-| 阶段 3 | V3 LangGraph + Checkpoint + SSE 流式 + HITL | 🔄 进行中（最小图+Checkpoint+API 已完成，SSE/HITL 待续） |
+| 阶段 3 | V3 LangGraph + Checkpoint + SSE 流式 + HITL | ✅ 完成（Git c9454e4，2026-09-03） |
+| 阶段 4 | V4 原子工具 + ToolPipeline + 钩子 + LangGraph 集成 | ✅ 完成（Git 0f2977b，2026-09-03） |
 
 > 阶段 3 收尾后，LangGraph 图将作为 V4 各阶段能力的"承载底盘"。
 

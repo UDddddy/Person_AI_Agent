@@ -5,6 +5,7 @@ from tools.run_command import RunCommandTool
 from tools.write_file import WriteFileTool
 
 from tools.read_file import ReadFileTool
+from tools.edit_file import EditFileTool
 Tools = {}
 TOOL_SCHEMA = []
 
@@ -17,3 +18,4 @@ register_tool(GetCurrentTimeTool())
 register_tool(RunCommandTool())
 register_tool(WriteFileTool())
 register_tool(ReadFileTool())
+register_tool(EditFileTool())

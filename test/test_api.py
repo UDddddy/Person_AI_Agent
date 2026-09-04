@@ -8,10 +8,11 @@ def ask(message):
     print(f"你: {message}")
     print(f"AI: {r.json()['reply']}")
     print("-" * 30)
-    
 
-# 连续两条，看第二条是否"记得"第一条
-ask("请计算 1+1")
-ask("刚才算的结果再加上 10 是多少？")
-r = httpx.post(base, json={"message": "我刚才让你计算的第一个问题是什么？", "session_id": sid})
-print(f"AI: {r.json()['reply']}")
+
+if __name__ == "__main__":
+    # 连续两条，看第二条是否"记得"第一条
+    ask("请计算 1+1")
+    ask("刚才算的结果再加上 10 是多少？")
+    r = httpx.post(base, json={"message": "我刚才让你计算的第一个问题是什么？", "session_id": sid})
+    print(f"AI: {r.json()['reply']}")
