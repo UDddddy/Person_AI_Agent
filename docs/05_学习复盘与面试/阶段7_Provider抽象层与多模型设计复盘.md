@@ -297,7 +297,144 @@ assert len(results) == 1  # 空 chunk 被跳过
 
 ---
 
-## 九、面试要点速查
+## 九、专题：真流式落地——从"一次性吐全文"到逐 token
+
+阶段7虽然在接口里定义了 `stream()`，但流式端点 `/api/chat_graph_stream` 一直是"假流式"：前端要等模型全部生成完，才一次性看到整段文字。本专题记录这次排查的完整过程，**核心价值是两个叠加的根因和对应的技术选型**。
+
+### 9.1 现象
+
+前端切到"流式"模式发消息，没有打字机效果：等待几秒后整段回答一次性出现。但用 MockProvider 跑单测又是"逐字"的，造成"单测过了、实际不行"的迷惑现象。
+
+### 9.2 第一层根因：图节点用的是同步 chat()
+
+改造前 `stream_graph.py` 的 agent_node：
+
+```python
+def agent_node(state):
+    resp = provider.chat(...)          # ← 同步调用，一次性拿完整响应
+    return {"messages": [AIMessage(content=resp.content, ...)]}
+```
+
+外层用 LangGraph 的 `stream_mode="messages"` 想拿逐 token 增量，但节点内部是**同步阻塞**调用 `provider.chat()`——它必须等模型把整段话生成完才返回，LangGraph 只能在节点跑完后拿到一条完整 AIMessage，自然没有增量。`stream_mode="messages"` 捕获的是"langchain ChatModel 内部的 callback 增量"，而我们的 provider 是框架无关的普通同步类，根本没有 callback 可捕获。
+
+### 9.3 技术选择（一）：StreamWriter + stream_mode="custom"
+
+有三个候选方案：
+
+| 方案 | 做法 | 优点 | 缺点 | 结论 |
+|---|---|---|---|---|
+| A. StreamWriter + custom mode | 节点内调 `provider.stream()`，用 LangGraph 注入的 `StreamWriter` 逐块写入，外层 `stream_mode="custom"` 接收 | 保持 LangGraph 图架构（agent↔tools 循环、条件边都不变），与非流式路径同构 | 需要理解 custom 流模式 | **选用** |
+| B. 绕过 LangGraph 手写 agent loop | 流式端点自己写 while 循环：stream→累积→判 tool_calls→执行工具→再 stream | 最直白、完全可控 | 重复实现一遍图的循环逻辑，流式/非流式两套分叉 | 备选 |
+| C. 改回 langchain ChatOpenAI | 用 `ChatOpenAI().stream()` 让 messages mode 能捕获增量 | 改动小 | 违背阶段7"provider 框架无关"的设计，重新绑死 langchain | 否决 |
+
+**选 A 的原因**：阶段7刚把业务层从 langchain ChatModel 解耦出来，不能为了流式又退回去；而方案 B 会让同一条 Agent 决策链维护两份循环。方案 A 只在节点内部把 `chat()` 换成 `stream()`，图的拓扑（节点、条件边、工具回环）原封不动。
+
+落地代码：
+
+```python
+from langgraph.types import StreamWriter
+
+def agent_node(state, writer: StreamWriter):      # LangGraph 自动注入 writer
+    full_content = ""
+    tc_buf = {}                                  # 流式 tool_calls 按 index 累积
+    for resp in provider.stream(to_openai_messages(state["messages"]), tools=TOOL_SCHEMA):
+        if resp.content:                         # 文本增量：边累积边推给外层
+            full_content += resp.content
+            writer({"type": "token", "content": resp.content})
+        for tc in resp.tool_calls:               # 工具参数增量（见 9.6）
+            ...
+    return {"messages": [AIMessage(content=full_content, tool_calls=final_tool_calls)]}
+```
+
+外层生成器从 messages mode 改成 custom mode：
+
+```python
+for event in compiled.stream(inputs, stream_mode="custom"):
+    yield (event["type"], event.get("content"))   # event 就是 writer() 写入的 dict
+```
+
+### 9.4 第二层根因：async 端点里跑同步阻塞（真正的元凶）
+
+改完第一层，直接在 Python 里调 `stream_graph_events()` 已经能逐 token 了，但**通过 HTTP 访问 SSE 端点，所有 token 仍然挤在同一毫秒到达**。根因在 FastAPI 端点：
+
+```python
+@app.post("/api/chat_graph_stream")
+async def chat_graph_stream_endpoint(request):     # async 端点 → 跑在事件循环线程
+    async def event_generator():
+        for event in stream_graph_events(...):     # ← 同步生成器，内部是同步 openai HTTP 请求
+            yield f"data: ..."                     # 同步 I/O 把事件循环卡死了
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+```
+
+**原理（关键）**：`async def` 的代码跑在单线程事件循环上。`for` 迭代同步生成器时，里面的 openai 同步 HTTP 请求会**阻塞整个事件循环线程**；这期间 `yield` 出来的 SSE 字节虽然进了发送队列，但事件循环被占着、没机会执行真正的 socket 发送。直到模型全部生成完、同步阻塞解除，事件循环才一口气把积压的所有数据 flush 出去——表现就是"等几秒，全文一次性出现"。
+
+> 这也解释了为什么单测没问题：单测直接迭代同步生成器，同一个线程边取边处理，不存在"另一个发送协程被阻塞"的问题。**问题只在 async 运行时里暴露。**
+
+### 9.5 技术选择（二）：iterate_in_threadpool
+
+三个候选：
+
+| 方案 | 做法 | 优点 | 缺点 | 结论 |
+|---|---|---|---|---|
+| A. iterate_in_threadpool | 保持 async 端点，用 Starlette 的 `iterate_in_threadpool` 把同步生成器的每次 `next()` 丢到线程池 | 改动最小，只包一层；事件循环在等待线程时能继续发送 | 每次迭代有轻微线程切换开销（对 LLM 这种秒级延迟可忽略） | **选用** |
+| B. 端点改成同步 def | `def`（非 async）端点，Starlette 自动把整个响应迭代放线程池 | 不用引入新 API | 同步生成器要写成普通函数嵌套，和项目其他 async 端点风格不统一 | 备选 |
+| C. 全异步化 | 换 AsyncOpenAI + LangGraph `astream` + async provider | 最彻底、高并发性能最好 | 改动面大：provider 接口、两个实现、业务层全要加 async 版本 | 后续优化 |
+
+**选 A 的原因**：用最小改动解决阻塞，且不破坏现有同步 provider 架构。LLM 调用是秒级 I/O 密集型，线程切换的微秒级开销完全可以忽略；方案 C 的全异步是高并发场景才需要的优化，当前单机学习项目用不上（避免过度设计）。
+
+落地：
+
+```python
+from starlette.concurrency import iterate_in_threadpool
+
+async def event_generator():
+    sync_iter = stream_graph_events(...)                 # 同步生成器
+    async for event in iterate_in_threadpool(sync_iter): # 每次 next 在线程池执行
+        yield f"data: {json.dumps(...)}\n\n"             # 事件循环不被阻塞，逐条实时发出
+```
+
+`iterate_in_threadpool` 的本质：把同步迭代器的每一步 `__next__` 用 `anyio.to_thread.run_sync` 丢到工作线程，事件循环 `await` 它的期间可以去执行 SSE 字节的发送——于是 token 之间真正"流"了起来。
+
+### 9.6 附带难点：流式 tool_calls 的增量累积
+
+非流式 `chat()` 一次返回完整的 `tool_calls=[{name, args(dict), id}]`；但流式时模型是**逐字吐出 arguments JSON 字符串**的，每个 chunk 只带一小段，且靠 `index` 区分并行的多个工具调用：
+
+```python
+# openai_compat.stream() 每个 chunk yield 的是片段：
+{"name": "calculator", "args": "{\"expr", "id": "call_1", "index": 0}
+{"args": "ession", "index": 0}        # name/id 只在首块出现
+{"args": ": 1+1}", "index": 0}
+```
+
+agent_node 必须按 `index` 用 dict 累积 `args` 字符串，流结束后再 `json.loads` 成 dict；工具名首次出现时推一次 `tool_call` 事件（用 `emitted` 标志位防重复）。**这是流式 function calling 和非流式最大的实现差异。**
+
+### 9.7 排查方法论：分层定位，逐层排除
+
+这次没有一上来就猜，而是从底向上逐层用时间戳验证，每一层都能独立证伪：
+
+```
+① provider.stream()        直接调，打印每个 chunk 时间 → 51 chunk 逐个到 ✅（排除模型层）
+② stream_graph_events()    直接迭代，打印 token 时间   → 跨度 3.1s 逐个到 ✅（排除图层）
+③ iterate_in_threadpool    async for 包装后测时间      → 跨度 0.1s 逐个到 ✅（排除包装层）
+④ HTTP SSE 端点            requests stream 测到达时间 → 跨度 0.00s 全挤一起 ❌（锁定 HTTP 层）
+```
+
+定位到第④层后，原因就是 async 里同步阻塞。**教训：改完代码一定要确认服务真的重启了**——第一次修复后测试仍失败，是因为旧 uvicorn 进程占用端口、新进程启动失败，请求一直打到旧代码，白白绕了一圈。
+
+### 9.8 验证数据对比
+
+同一个请求（"写一首秋天的五言绝句并解释"，328 个 token）：
+
+| 指标 | 修复前 | 修复后 |
+|---|---|---|
+| 首个 token | 10.71s | 3.30s |
+| 第 100 个 token | 10.71s | 3.97s |
+| 最后 token | 10.71s | 6.15s |
+| **到达时间跨度** | **0.00s（全积压）** | **2.86s（真流式）** |
+
+---
+
+## 十、面试要点速查
 
 被问到"你这个项目怎么支持多模型"时，按这个顺序讲：
 
@@ -309,7 +446,31 @@ assert len(results) == 1  # 空 chunk 被跳过
 6. **改造**：graph_agent 和 stream_graph 都改用 provider，删了 ChatOpenAI 和直接 client 调用，call_llm 从20行缩到4行
 7. **测试亮点**：mock openai client 测解析逻辑、测 tools=None 不传、端到端用 MockProvider 跑通完整 Agent
 8. **设计权衡**：provider 层不依赖 langchain（框架无关）、模块级单例（连接池复用+测试好 patch）、usage 做空值保护
+9. **真流式（加分项）**：节点用 provider.stream() + LangGraph StreamWriter（custom mode）逐块推；SSE 端点用 iterate_in_threadpool 把同步生成器放线程池，避免 async 里同步 I/O 阻塞事件循环导致"假流式"
+
+### 流式专项面试题（自测）
+
+**Q1：SSE / WebSocket / 普通 HTTP 响应有什么区别？LLM 流式输出为什么选 SSE？**
+- 普通 HTTP：一次请求一次完整响应，要等全部生成完。
+- SSE（Server-Sent Events）：**单向**（服务器→客户端）、基于 HTTP、长连接、`text/event-stream`、自动重连。LLM 流式是"客户端发一次问题、服务端持续吐 token"，正好是单向推送，SSE 最简单。
+- WebSocket：**全双工双向**，适合双向高频交互（协同编辑、聊天室、语音对话），但 LLM 问答用不上客户端持续上行，属于杀鸡用牛刀，还要自己处理心跳、断线。
+
+**Q2：为什么在 async def 里直接 for 一个同步生成器会导致"假流式"？**
+- async 代码跑在单线程事件循环上；同步生成器内部的阻塞 I/O（如同步 openai 请求）会占死事件循环，期间 `yield` 的数据无法被真正发送（发送协程得不到调度），全部积压到阻塞结束后一次性 flush。解决：`iterate_in_threadpool` / `run_in_executor` 把同步迭代丢线程池，或全链路 async。
+
+**Q3：iterate_in_threadpool 做了什么？为什么它能解决？**
+- 它把同步迭代器的每次 `__next__` 通过 `anyio.to_thread.run_sync` 放到工作线程执行，事件循环 `await` 结果期间可以去调度其他协程（包括把已 yield 的 SSE 字节发给客户端），于是数据能逐条实时流出。
+
+**Q4：LangGraph 的 stream_mode 有哪些？为什么这里用 custom 而不是 messages？**
+- `values`：每步后的完整 state；`updates`：每个节点的更新；`messages`：langchain ChatModel 的 token 级 callback；`custom`：节点内通过 `StreamWriter` 自定义写入的数据。
+- 本项目 provider 是框架无关的普通类、不是 langchain ChatModel，messages mode 捕获不到增量；用 StreamWriter 在节点内显式 `writer({"type":"token",...})`，custom mode 原样接收，最可控。
+
+**Q5：流式 function calling 和非流式在处理上有什么不同？**
+- 非流式一次拿到完整 tool_calls（args 已是 dict）；流式时 arguments 是逐字到达的 JSON **字符串片段**，要按 `index` 累积拼接，结束后再 `json.loads`；name/id 通常只在首块出现，需要缓存。
+
+**Q6：怎么判断"流式没生效"卡在哪一层？**
+- 从底向上分层打时间戳：①直接调 provider.stream ②直接迭代业务生成器 ③async 包装后 ④真实 HTTP SSE。哪一层的时间跨度从"有间隔"变成"全挤同一时刻"，问题就在那一层。
 
 ---
 
-*文档生成时间：阶段7完成后 · 全量测试 109 passed*
+*文档更新：阶段7完成后初版，真流式落地后补充第九章专题与流式面试题 · 全量测试 158 passed*

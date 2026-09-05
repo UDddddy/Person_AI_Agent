@@ -73,21 +73,29 @@ def chat_endpoint(request: ChatRequest):
 #   - "error"      ：出错信息
 import json as _json
 from fastapi.responses import StreamingResponse as _StreamingResponse
+from starlette.concurrency import iterate_in_threadpool
 from app.stream_graph import get_checkpointer as stream_get_checkpointer
 from app.stream_graph import stream_graph_events
 
 @app.post("/api/chat_graph_stream")
 async def chat_graph_stream_endpoint(request: ChatRequest):
-    """SSE 流式版 Agent：同一 session_id 的历史可跨请求恢复（Checkpoint）。"""
+    """SSE 流式版 Agent：逐 token 推送。
+
+    关键：stream_graph_events 是同步生成器（内部跑同步 openai 请求），
+    必须用 iterate_in_threadpool 放到线程池——否则同步 I/O 会阻塞事件循环，
+    导致每个 yield 的 SSE 数据无法及时发送，全部攒到结束后一次性 flush
+    （表现为"假流式"：等几秒后全文一次性出现）。
+    """
     async def event_generator():
         try:
             # 与 /api/chat 一致：with 打开 SqliteSaver 做会话持久化
             with stream_get_checkpointer() as checkpointer:
-                for event_type, data in stream_graph_events(
+                sync_iter = stream_graph_events(
                     request.message,
                     session_id=request.session_id,
                     checkpointer=checkpointer,
-                ):
+                )
+                async for event_type, data in iterate_in_threadpool(sync_iter):
                     payload = _json.dumps(
                         {"type": event_type, "content": data}, ensure_ascii=False
                     )
