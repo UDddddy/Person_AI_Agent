@@ -17,10 +17,10 @@
 阶段 6 ✅  树形会话 + Compaction 压缩（Fork/回滚/自动压缩）
 阶段 7 ✅  Provider 抽象层（多模型切换 + Mock + 流式统一）
 阶段 8 ✅  多 Agent 编排（Chain 流水线 / Team 调度器 / Subagent 并行）
-阶段 9 🔄  生产化（可观测性 + 评估 + Docker + 文档收尾）
+阶段 9 ✅  生产化（可观测性 + 评估 + Docker + 文档收尾 + Web 前端）
 ```
 
-**测试基线：130+ passed**
+**测试基线：145 passed**
 
 ---
 
@@ -30,10 +30,10 @@
 graph TB
     subgraph API层["API 层"]
         Main["app/main.py<br/>FastAPI"]
+        Index["GET /<br/>Web 前端"]
         Health["/health"]
         Chat["/api/chat"]
         Stream["/api/chat_graph_stream<br/>(SSE)"]
-        Compact["/compact"]
     end
 
     subgraph Agent层["Agent 层"]
@@ -50,8 +50,8 @@ graph TB
 
     subgraph 工具层["工具层（阶段4）"]
         Pipeline["ToolPipeline<br/>Prepare→Execute→Finalize"]
-        Registry["工具注册表<br/>6个原子工具"]
-        Tools["calculator / time<br/>run_command / read_file<br/>write_file / edit_file"]
+        Registry["工具注册表<br/>7个原子工具 + MCP"]
+        Tools["calculator / time<br/>run_command / read_file<br/>write_file / edit_file<br/>hash_text + MCP扩展"]
     end
 
     subgraph 基础设施["基础设施"]
@@ -123,16 +123,21 @@ graph TB
 │   └── db.py                # 数据库初始化
 ├── tools/
 │   ├── base.py              # BaseTool 抽象（execute 自带异常兜底）
-│   ├── registry.py          # 工具注册表 + TOOL_SCHEMA
+│   ├── registry.py          # 工具注册表 + TOOL_SCHEMA + MCP 自动发现
 │   ├── pipeline.py          # ToolPipeline 三阶段执行
 │   ├── calculator.py        # 计算器
 │   ├── time_tool.py         # 当前时间
 │   ├── run_command.py       # 运行命令（默认 mock）
 │   ├── read_file.py         # 读文件
 │   ├── write_file.py        # 写文件
-│   └── edit_file.py         # 编辑文件
+│   ├── edit_file.py         # 编辑文件
+│   ├── hash_text.py         # 文本哈希（自定义工具示例）
+│   ├── mcp_bridge.py        # MCP 外部工具桥接（可选，配置即启用）
+│   └── mcp_servers.example.json  # MCP 配置模板
+├── web/
+│   └── index.html           # 单文件聊天前端（深色+琥珀色，会话管理/工具卡片）
 ├── demo/                    # 命令行联调演示
-├── test/                    # pytest 自动化测试（130+ passed）
+├── test/                    # pytest 自动化测试（145 passed）
 ├── docs/                    # ★ 全部文档（计划/笔记/总结/架构学习/复盘面试）
 ├── Dockerfile               # 阶段9：容器化
 ├── docker-compose.yml       # 阶段9：一键启动
@@ -160,10 +165,13 @@ pip install -r requirements.txt
 # 3. 启动 API 服务
 .venv\Scripts\python.exe -m uvicorn app.main:app --port 8000
 
-# 4. 健康检查
+# 4. 打开 Web 聊天界面（同源托管，直接访问）
+#    浏览器打开 http://127.0.0.1:8000/
+
+# 5. 健康检查
 Invoke-RestMethod http://127.0.0.1:8000/health
 
-# 5. 运行测试
+# 6. 运行测试
 .venv\Scripts\python.exe -m pytest test/ -q
 ```
 
@@ -197,7 +205,7 @@ docker compose down
 
 ### `POST /api/chat`
 
-非流式对话（LangGraph + Checkpoint 会话持久化）。
+非流式对话（LangGraph + 树形存储会话持久化）。
 
 **请求：**
 ```json
@@ -210,7 +218,7 @@ docker compose down
 **响应：**
 ```json
 {
-  "response": "你好！有什么可以帮你的？"
+  "reply": "你好！有什么可以帮你的？"
 }
 ```
 

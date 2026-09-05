@@ -1,9 +1,3 @@
-import pytest
-from app import db
-
-@pytest.fixture
-def tmp_db(tmp_path, monkeypatch):
-    """把数据库指到临时文件，隔离测试数据"""
-    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "test.db"))
-    db.init_db()
-    return db
+# pytest 共享 fixture 在此定义。
+# 旧版 tmp_db fixture（阶段1-2 的 database.db）已随遗留代码一并移除，
+# 当前测试各自使用临时路径或 sessions.db 的独立 session_id 做隔离。

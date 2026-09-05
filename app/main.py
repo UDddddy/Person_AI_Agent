@@ -1,5 +1,4 @@
 
-from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,22 +10,13 @@ from app.graph_agent_hitl import get_checkpointer as hitl_get_checkpointer
 from app.graph_agent_hitl import resume_hitl_turn, start_hitl_turn
 from app.schema import ChatRequest, ChatResponse, HitlResumeRequest
 import logging
-from app.db import init_db
 from app.session_store import build_chain, init_store
 logging.basicConfig(level=logging.INFO)
-
-
-@asynccontextmanager
-async def lifespan(_: FastAPI):
-    """应用生命周期：startup 初始化数据库（替代已弃用的 @app.on_event）。"""
-    init_db()
-    yield
 
 
 app = FastAPI(
     title = "fengmouren的聊天机器人",
     version = "0.3.1",
-    lifespan = lifespan,
 )
 
 # CORS：允许前端从 file:// 或其他源访问 API
