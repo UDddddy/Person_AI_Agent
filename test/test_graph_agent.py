@@ -8,13 +8,12 @@ from unittest.mock import patch
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.checkpoint.sqlite import SqliteSaver
-
+from tools.pipeline import ToolPipeline
 from app.graph_agent import (
     END,
     build_graph,
-    graph,
     should_continue,
-    tool_node,
+    make_tool_node,
 )
 
 SYSTEM = SystemMessage(content="You are a helpful assistant.")
@@ -24,7 +23,7 @@ def test_direct_answer_no_tool_call():
     """LLM 直接回答（无 tool_calls）→ 图返回最终答案，历史累积。"""
     fake = AIMessage(content="1+1 等于 2")
     with patch("app.graph_agent.call_llm", return_value=fake):
-        result = graph.invoke(
+        result = build_graph().invoke(
             {"messages": [SYSTEM, HumanMessage(content="1+1 等于几")], "session_id": "t1"}
         )
 
@@ -53,7 +52,7 @@ def test_tool_call_chain():
         AIMessage(content="1+1 等于 2"),
     ]
     with patch("app.graph_agent.call_llm", side_effect=calls) as mocked:
-        result = graph.invoke(
+        result = build_graph().invoke(
             {"messages": [SYSTEM, HumanMessage(content="计算 1+1")], "session_id": "t2"}
         )
 
@@ -111,7 +110,7 @@ def test_tool_node_executes_real_tool():
         ],
         "session_id": "x",
     }
-    result = tool_node(state)
+    result = make_tool_node(ToolPipeline())(state)
     msg = result["messages"][0]
     assert isinstance(msg, ToolMessage)
     assert msg.content == "5"

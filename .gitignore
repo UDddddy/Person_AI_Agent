@@ -9,3 +9,5 @@ app/copy.ipynb
 *.db
 *.sqlite
 *.sqlite3
+.pytest_tmp/
+.workbuddy/

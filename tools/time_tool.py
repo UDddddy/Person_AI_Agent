@@ -8,6 +8,7 @@ class GetCurrentTimeTool(BaseTool):
     parameters: dict = {
         "type": "object",
         "properties": {},   # 这个工具不需要参数
+        "required": [],
     }
 
     def run(self):

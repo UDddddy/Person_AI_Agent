@@ -15,7 +15,7 @@ class BaseTool(BaseModel):
             try:
                 argument = json.loads(arguments)
             except json.JSONDecodeError:
-                return ValueError("JSON 解析失败")
+                return "JSON 解析失败"
         else:
             argument = arguments
         
@@ -23,11 +23,11 @@ class BaseTool(BaseModel):
             result = self.run(**argument)
             return str(result)
         except ZeroDivisionError as e:
-            return ValueError(f"计算错误分母不能为零: {str(e)}")
+            return f"计算错误分母不能为零: {str(e)}"
         except TypeError as e:
-            return ValueError(f"参数类型错误: {str(e)}")
+            return f"参数类型错误: {str(e)}"
         except Exception as e:
-            return ValueError(f"计算错误: {str(e)}")
+            return f"计算错误: {str(e)}"
 
                 
 

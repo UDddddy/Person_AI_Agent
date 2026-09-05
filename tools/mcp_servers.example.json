@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "C:/Users/fff/Desktop"],
+      "env": {}
+    },
+    "remote-demo": {
+      "transport": "http",
+      "url": "http://127.0.0.1:9000/mcp"
+    }
+  }
+}

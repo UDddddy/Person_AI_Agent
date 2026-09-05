@@ -1,0 +1,37 @@
+# 阶段9 · .dockerignore
+# 构建镜像时排除这些文件/目录
+
+# 虚拟环境和依赖
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# 环境变量和密钥
+.env
+.env.*
+
+# 数据库（运行时生成，不打进镜像）
+*.db
+*.sqlite
+*.sqlite3
+sessions.db
+checkpoints.sqlite
+
+# 测试和文档（运行时不需要）
+test/
+docs/
+.pytest_cache/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# 临时文件
+*.log
+_verify_*.py

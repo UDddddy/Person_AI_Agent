@@ -1,0 +1,1252 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Personal AI Agent</title>
+<style>
+  /* ===== 设计令牌 ===== */
+  :root {
+    --bg: #1a1a18;
+    --bg-elevated: #242420;
+    --bg-hover: #2e2e28;
+    --border: #3a3a32;
+    --border-light: #4a4a40;
+    --text: #e8e6df;
+    --text-secondary: #9a9888;
+    --text-muted: #6a6858;
+    --accent: #d97706;
+    --accent-hover: #f59e0b;
+    --accent-dim: rgba(217, 119, 6, 0.15);
+    --user-bubble: #2d3a2e;
+    --user-border: #3d5a3e;
+    --ai-bubble: var(--bg-elevated);
+    --tool-bg: #1e1e1a;
+    --tool-border: #4a4030;
+    --error: #dc2626;
+    --success: #16a34a;
+    --radius: 8px;
+    --radius-sm: 4px;
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--font-sans);
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+  }
+
+  /* ===== 侧边栏 ===== */
+  .sidebar {
+    width: 280px;
+    min-width: 280px;
+    background: var(--bg-elevated);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+
+  .sidebar-header {
+    padding: 20px 16px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--font-mono);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: -0.3px;
+  }
+
+  .logo svg { flex-shrink: 0; }
+
+  .logo-sub {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    font-family: var(--font-mono);
+  }
+
+  .new-chat-btn {
+    width: 100%;
+    margin-top: 14px;
+    padding: 10px;
+    background: var(--accent-dim);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .new-chat-btn:hover {
+    background: var(--accent);
+    color: var(--bg);
+  }
+
+  .session-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+  }
+
+  .session-item {
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    margin-bottom: 2px;
+    transition: background 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .session-item:hover { background: var(--bg-hover); }
+  .session-item.active {
+    background: var(--accent-dim);
+    border-left: 2px solid var(--accent);
+  }
+
+  .session-item-title {
+    font-size: 13px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+  }
+
+  .session-item-time {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+  }
+
+  .sidebar-footer {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  .status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    transition: background 0.3s;
+  }
+
+  .status-dot.connected { background: var(--success); box-shadow: 0 0 6px var(--success); }
+  .status-dot.error { background: var(--error); }
+
+  /* ===== 主聊天区 ===== */
+  .main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    min-width: 0;
+  }
+
+  .chat-header {
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bg);
+  }
+
+  .chat-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .chat-session-id {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    margin-top: 2px;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .mode-toggle {
+    display: flex;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+
+  .mode-btn {
+    padding: 6px 12px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: var(--font-mono);
+  }
+
+  .mode-btn.active {
+    background: var(--accent-dim);
+    color: var(--accent);
+  }
+
+  .icon-btn {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .icon-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+  }
+
+  /* ===== 消息区 ===== */
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .message {
+    display: flex;
+    gap: 12px;
+    max-width: 85%;
+    animation: fadeIn 0.2s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .message.user {
+    align-self: flex-end;
+    flex-direction: row-reverse;
+  }
+
+  .message-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+  }
+
+  .message.user .message-avatar {
+    background: var(--user-border);
+    color: #86efac;
+  }
+
+  .message.ai .message-avatar {
+    background: var(--accent-dim);
+    color: var(--accent);
+  }
+
+  .message-content {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .message-bubble {
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    font-size: 14px;
+    line-height: 1.6;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+  }
+
+  .message.user .message-bubble {
+    background: var(--user-bubble);
+    border: 1px solid var(--user-border);
+    border-top-right-radius: 2px;
+  }
+
+  .message.ai .message-bubble {
+    background: var(--ai-bubble);
+    border: 1px solid var(--border);
+    border-top-left-radius: 2px;
+  }
+
+  /* ===== 工具调用展示 ===== */
+  .tool-call {
+    margin-top: 8px;
+    background: var(--tool-bg);
+    border: 1px solid var(--tool-border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+
+  .tool-call-header {
+    padding: 8px 12px;
+    background: rgba(217, 119, 6, 0.08);
+    border-bottom: 1px solid var(--tool-border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-family: var(--font-mono);
+  }
+
+  .tool-call-name {
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .tool-call-status {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+
+  .tool-call-body {
+    padding: 10px 12px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-secondary);
+    overflow-x: auto;
+  }
+
+  .tool-call-args {
+    color: var(--text-muted);
+  }
+
+  .tool-call-result {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px dashed var(--border);
+    color: var(--success);
+  }
+
+  /* ===== 工具调用时间线（线性显示每次调用的先后顺序）===== */
+  .tool-timeline {
+    margin: 4px 0 10px;
+    padding-left: 18px;
+    border-left: 2px solid var(--tool-border);   /* 竖向时间线主干 */
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .tool-step {
+    position: relative;
+    background: var(--tool-bg);
+    border: 1px solid var(--tool-border);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  /* 时间线节点圆点：钉在左侧竖线上 */
+  .tool-step::before {
+    content: '';
+    position: absolute;
+    left: -23px;
+    top: 12px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);          /* 执行中：橙色 */
+    box-shadow: 0 0 0 3px var(--accent-dim);
+  }
+
+  .tool-step.done::before { background: var(--success); }   /* 完成：绿色 */
+  .tool-step.blocked::before { background: var(--error); }  /* 被拦截：红色 */
+
+  .tool-step.running::before {
+    animation: tool-pulse 1s ease-in-out infinite;        /* 执行中呼吸灯 */
+  }
+
+  @keyframes tool-pulse {
+    0%, 100% { box-shadow: 0 0 0 3px var(--accent-dim); }
+    50%     { box-shadow: 0 0 0 6px var(--accent-dim); }
+  }
+
+  .tool-step-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .tool-step-name {
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .tool-step-time {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+
+  .tool-step-detail {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px dashed var(--border);
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 120px;
+    overflow-y: auto;
+  }
+
+  .tool-step-detail .label {
+    color: var(--text-muted);
+    font-size: 10px;
+  }
+
+  .tool-step-detail .result-text { color: var(--success); }
+  .tool-step-detail .blocked-text { color: var(--error); }
+
+  /* ===== 输入区 ===== */
+  .input-area {
+    padding: 16px 24px 20px;
+    border-top: 1px solid var(--border);
+    background: var(--bg);
+  }
+
+  .input-wrapper {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    transition: border-color 0.15s;
+  }
+
+  .input-wrapper:focus-within {
+    border-color: var(--accent);
+  }
+
+  .input-textarea {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-size: 14px;
+    font-family: var(--font-sans);
+    resize: none;
+    max-height: 120px;
+    line-height: 1.5;
+  }
+
+  .input-textarea::placeholder { color: var(--text-muted); }
+
+  .send-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    border: none;
+    color: var(--bg);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+
+  .send-btn:hover { background: var(--accent-hover); }
+  .send-btn:disabled {
+    background: var(--bg-hover);
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+
+  .input-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 8px;
+    font-family: var(--font-mono);
+    text-align: center;
+  }
+
+  /* ===== 空状态 ===== */
+  .empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    color: var(--text-muted);
+  }
+
+  .empty-state-icon {
+    width: 64px;
+    height: 64px;
+    opacity: 0.3;
+  }
+
+  .empty-state-text {
+    font-size: 14px;
+    text-align: center;
+    line-height: 1.6;
+  }
+
+  .empty-state-text strong {
+    color: var(--text-secondary);
+    display: block;
+    font-size: 16px;
+    margin-bottom: 4px;
+  }
+
+  /* ===== 设置面板 ===== */
+  .settings-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+
+  .settings-overlay.open { display: flex; }
+
+  .settings-panel {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    width: 420px;
+    max-width: 90vw;
+    padding: 24px;
+  }
+
+  .settings-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .settings-group {
+    margin-bottom: 16px;
+  }
+
+  .settings-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    font-family: var(--font-mono);
+  }
+
+  .settings-input {
+    width: 100%;
+    padding: 8px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-size: 13px;
+    font-family: var(--font-mono);
+    outline: none;
+  }
+
+  .settings-input:focus { border-color: var(--accent); }
+
+  .settings-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 20px;
+  }
+
+  .btn-primary {
+    flex: 1;
+    padding: 10px;
+    background: var(--accent);
+    border: none;
+    color: var(--bg);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .btn-secondary {
+    padding: 10px 16px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  /* ===== 打字指示器 ===== */
+  .typing-indicator {
+    display: flex;
+    gap: 4px;
+    padding: 4px 0;
+  }
+
+  .typing-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    animation: typing 1.2s infinite;
+  }
+
+  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes typing {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+    30% { transform: translateY(-4px); opacity: 1; }
+  }
+
+  /* ===== 滚动条 ===== */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--border-light); }
+
+  /* ===== 响应式 ===== */
+  @media (max-width: 768px) {
+    .sidebar {
+      position: fixed;
+      left: -280px;
+      top: 0;
+      z-index: 50;
+      transition: left 0.25s;
+    }
+    .sidebar.open { left: 0; }
+    .mobile-menu-btn { display: flex !important; }
+  }
+
+  .mobile-menu-btn {
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== 侧边栏 ===== -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <div class="logo">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+        <path d="M2 17l10 5 10-5"/>
+        <path d="M2 12l10 5 10-5"/>
+      </svg>
+      AI Agent
+    </div>
+    <div class="logo-sub">personal_agent v1.0</div>
+    <button class="new-chat-btn" onclick="newSession()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+      新建会话
+    </button>
+  </div>
+  <div class="session-list" id="sessionList"></div>
+  <div class="sidebar-footer">
+    <div class="status-indicator">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">未连接</span>
+    </div>
+  </div>
+</aside>
+
+<!-- ===== 主聊天区 ===== -->
+<main class="main">
+  <div class="chat-header">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <button class="icon-btn mobile-menu-btn" onclick="toggleSidebar()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
+      <div>
+        <div class="chat-title" id="chatTitle">新会话</div>
+        <div class="chat-session-id" id="chatSessionId"></div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <div class="mode-toggle">
+        <button class="mode-btn" id="modeStream" onclick="setMode('stream')">流式</button>
+        <button class="mode-btn active" id="modeNormal" onclick="setMode('normal')">普通</button>
+      </div>
+      <button class="icon-btn" onclick="openSettings()" title="设置">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="messages" id="messages">
+    <div class="empty-state" id="emptyState">
+      <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
+      <div class="empty-state-text">
+        <strong>开始对话</strong>
+        输入消息，Agent 会自主判断是否调用工具<br>
+        支持计算器、文件读写、命令执行等 6 个工具
+      </div>
+    </div>
+  </div>
+
+  <div class="input-area">
+    <div class="input-wrapper">
+      <textarea class="input-textarea" id="inputBox" placeholder="输入消息，Enter 发送，Shift+Enter 换行..." rows="1"></textarea>
+      <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
+      </button>
+    </div>
+    <div class="input-hint" id="inputHint">普通模式 · 完整返回</div>
+  </div>
+</main>
+
+<!-- ===== 设置面板 ===== -->
+<div class="settings-overlay" id="settingsOverlay">
+  <div class="settings-panel">
+    <div class="settings-title">
+      设置
+      <button class="icon-btn" onclick="closeSettings()" style="width:28px;height:28px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="settings-group">
+      <div class="settings-label">API 地址（同源访问留空即可）</div>
+      <input class="settings-input" id="settingApiBase" placeholder="同源留空，如 http://127.0.0.1:8000">
+    </div>
+    <div class="settings-group">
+      <div class="settings-label">会话 ID（留空自动生成）</div>
+      <input class="settings-input" id="settingSessionId" placeholder="auto">
+    </div>
+    <div class="settings-actions">
+      <button class="btn-secondary" onclick="closeSettings()">取消</button>
+      <button class="btn-primary" onclick="saveSettings()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== 状态管理 =====
+// 通过 http:// 访问后端时用同源相对路径；file:// 直接打开时用完整地址
+const DEFAULT_API_BASE = location.protocol.startsWith('http') ? '' : 'http://127.0.0.1:8000';
+const state = {
+  apiBase: localStorage.getItem('agent_api_base') || DEFAULT_API_BASE,
+  sessionId: null,
+  mode: 'normal', // normal | stream（默认非流式，更稳定）
+  sessions: JSON.parse(localStorage.getItem('agent_sessions') || '[]'),
+  messages: [],
+  isLoading: false,
+};
+
+// ===== 初始化 =====
+document.addEventListener('DOMContentLoaded', () => {
+  checkConnection();
+  renderSessionList();
+  setupInput();
+});
+
+// ===== 连接检测 =====
+async function checkConnection() {
+  const dot = document.getElementById('statusDot');
+  const text = document.getElementById('statusText');
+  try {
+    const res = await fetch(state.apiBase + '/health', { signal: AbortSignal.timeout(3000) });
+    if (res.ok) {
+      dot.className = 'status-dot connected';
+      text.textContent = '已连接';
+    } else {
+      dot.className = 'status-dot error';
+      text.textContent = '连接异常';
+    }
+  } catch (e) {
+    dot.className = 'status-dot error';
+    text.textContent = '未连接';
+  }
+}
+
+// ===== 会话管理 =====
+// 清空消息区并重建空状态（不能直接 innerHTML=''，会把 emptyState 也删掉导致后续 null 报错）
+function resetMessages() {
+  document.getElementById('messages').innerHTML = `
+    <div class="empty-state" id="emptyState">
+      <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
+      <div class="empty-state-text">
+        <strong>开始对话</strong>
+        输入消息，Agent 会自主判断是否调用工具<br>
+        支持计算器、文件读写、命令执行等 6 个工具
+      </div>
+    </div>`;
+}
+
+function newSession() {
+  state.sessionId = 'sess_' + Date.now().toString(36);
+  state.messages = [];
+  document.getElementById('chatTitle').textContent = '新会话';
+  document.getElementById('chatSessionId').textContent = state.sessionId;
+  resetMessages();
+  addSessionToList(state.sessionId, '新会话');
+  saveSessions();
+}
+
+function addSessionToList(id, title) {
+  const existing = state.sessions.find(s => s.id === id);
+  if (existing) {
+    existing.title = title;
+    existing.time = Date.now();
+  } else {
+    state.sessions.unshift({ id, title, time: Date.now() });
+  }
+  renderSessionList();
+}
+
+function renderSessionList() {
+  const list = document.getElementById('sessionList');
+  list.innerHTML = state.sessions.map(s => `
+    <div class="session-item ${s.id === state.sessionId ? 'active' : ''}" onclick="loadSession('${s.id}')">
+      <span class="session-item-title">${escapeHtml(s.title)}</span>
+      <span class="session-item-time">${formatTime(s.time)}</span>
+    </div>
+  `).join('');
+}
+
+async function loadSession(id) {
+  state.sessionId = id;
+  state.messages = [];
+  document.getElementById('chatTitle').textContent = state.sessions.find(s => s.id === id)?.title || '会话';
+  document.getElementById('chatSessionId').textContent = id;
+  resetMessages();
+  renderSessionList();
+  await loadHistory(id);   // 【修复】从后端取回历史消息并渲染（此前只清空不回填 → 空白）
+}
+
+// ===== 【新增 · v0.3.1】加载会话历史 =====
+// 树形存储（sessions.db）是历史唯一事实源，此前 loadSession 只重置界面，
+// 从没把历史读回来，所以点击侧边栏旧会话时聊天框一片空白。
+async function loadHistory(sessionId) {
+  try {
+    const res = await fetch(state.apiBase + '/api/sessions/' + encodeURIComponent(sessionId) + '/history');
+    if (!res.ok) return;                        // 旧版后端无此接口 → 保持空状态（优雅降级）
+    const data = await res.json();
+    const msgs = data.messages || [];
+    state.messages = msgs;
+    if (!msgs.length) return;                   // 空会话：保持"开始对话"引导页
+
+    // 先建 tool_call_id → 结果/工具名 的映射（名字在 assistant.tool_calls 上，结果在 tool 条目上）
+    const toolNames = {};
+    for (const m of msgs) {
+      if (m.role === 'assistant') {
+        for (const tc of m.tool_calls || []) {
+          if (tc.id) toolNames[tc.id] = tc.name || tc.tool || 'tool';
+        }
+      }
+    }
+
+    const emptyEl = document.getElementById('emptyState');
+    if (emptyEl) emptyEl.style.display = 'none';
+
+    // 【时间线版】连续的"assistant 发起调用 + tool 结果"聚合到同一条线性轨迹，
+    // 直到最后一个带文本的 assistant 作为最终回答气泡出现。
+    let pendingHost = null;      // 当前轨迹所在的消息元素
+    let pendingTimeline = null;  // 当前积累中的时间线容器
+
+    for (const m of msgs) {
+      if (m.role === 'user') {
+        addMessage('user', m.content);
+        pendingHost = pendingTimeline = null;   // 用户消息打断轨迹
+      } else if (m.role === 'assistant') {
+        const calls = m.tool_calls || [];
+        if (calls.length) {
+          // 发起工具调用：复用宿主消息，往其时间线按顺序追加步骤
+          if (!pendingHost) {
+            pendingHost = addMessage('ai', '');
+            pendingTimeline = ensureToolTimeline(pendingHost.querySelector('.message-content'));
+          }
+          for (const tc of calls) {
+            addToolStep(pendingTimeline, tc.name || tc.tool || 'tool', tc.args || {}, 'running');
+          }
+          if (m.content) pendingHost.querySelector('.message-bubble').textContent = m.content;
+        } else if (m.content) {
+          addMessage('ai', m.content);          // 最终回答：新的纯文本气泡
+          pendingHost = pendingTimeline = null;
+        }
+      } else if (m.role === 'tool') {
+        // 工具结果：按 tool_call_id 配对名字，完成时间线上对应步骤
+        if (pendingTimeline) {
+          const name = toolNames[m.tool_call_id] || 'tool';
+          completeToolStep(pendingTimeline, name, m.content, null, false);
+        }
+      }
+    }
+  } catch (e) {
+    // 后端未启动等网络异常 → 静默降级，保持空状态，不阻塞切换会话
+  }
+}
+
+function saveSessions() {
+  localStorage.setItem('agent_sessions', JSON.stringify(state.sessions.slice(0, 20)));
+}
+
+// ===== 输入处理 =====
+function setupInput() {
+  const input = document.getElementById('inputBox');
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+  input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+  });
+}
+
+// ===== 发送消息 =====
+async function sendMessage() {
+  const input = document.getElementById('inputBox');
+  const text = input.value.trim();
+  if (!text || state.isLoading) return;
+
+  if (!state.sessionId) newSession();
+
+  state.isLoading = true;
+  document.getElementById('sendBtn').disabled = true;
+  const emptyEl = document.getElementById('emptyState');
+  if (emptyEl) emptyEl.style.display = 'none';
+
+  // 添加用户消息
+  addMessage('user', text);
+  input.value = '';
+  input.style.height = 'auto';
+
+  // 添加 AI 占位消息
+  const aiMsgEl = addMessage('ai', '');
+  const bubbleEl = aiMsgEl.querySelector('.message-bubble');
+  showTyping(bubbleEl);
+
+  try {
+    if (state.mode === 'stream') {
+      await sendStream(text, bubbleEl);
+    } else {
+      await sendNormal(text, bubbleEl);
+    }
+  } catch (e) {
+    bubbleEl.innerHTML = `<span style="color:var(--error)">请求失败: ${escapeHtml(e.message)}</span>`;
+  } finally {
+    state.isLoading = false;
+    document.getElementById('sendBtn').disabled = false;
+    checkConnection();
+  }
+}
+
+// ===== 非流式请求 =====
+async function sendNormal(text, bubbleEl) {
+  const res = await fetch(state.apiBase + '/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: text, session_id: state.sessionId }),
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  bubbleEl.textContent = data.response || data.reply || '(空回复)';
+  // 【新增】普通模式：响应体带 tool_trace（按调用顺序）→ 一次性渲染时间线
+  if (data.tool_trace && data.tool_trace.length) {
+    const timeline = ensureToolTimeline(bubbleEl.parentElement);
+    renderToolTrace(timeline, data.tool_trace);
+  }
+  updateSessionTitle(text);
+}
+
+// ===== SSE 流式请求 =====
+async function sendStream(text, bubbleEl) {
+  const res = await fetch(state.apiBase + '/api/chat_graph_stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: text, session_id: state.sessionId }),
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let fullText = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    // 解析 SSE: data: {json}\n\n
+    const events = buffer.split('\n\n');
+    buffer = events.pop() || '';
+
+    for (const evtStr of events) {
+      const line = evtStr.trim();
+      if (!line.startsWith('data: ')) continue;
+      const payload = line.slice(6).trim();
+      if (!payload) continue;
+
+      try {
+        const evt = JSON.parse(payload);
+        // 后端格式: {"type": "token"/"tool_call"/"tool_result"/"done"/"error", "content": ...}
+        if (evt.type === 'token' && evt.content) {
+          fullText += evt.content;
+          bubbleEl.textContent = fullText;
+        } else if (evt.type === 'tool_call') {
+          // content: {name, args} → 时间线追加"执行中"步骤
+          const contentEl = bubbleEl.parentElement;
+          const timeline = ensureToolTimeline(contentEl);
+          addToolStep(timeline, evt.content.name || 'tool', evt.content.args || {}, 'running');
+        } else if (evt.type === 'tool_result') {
+          // content: {name, content} → 对应步骤标记完成并显示结果
+          const contentEl = bubbleEl.parentElement;
+          const timeline = ensureToolTimeline(contentEl);
+          completeToolStep(timeline, evt.content.name || 'tool',
+            evt.content.content, null, false);
+        } else if (evt.type === 'error') {
+          bubbleEl.innerHTML = `<span style="color:var(--error)">错误: ${escapeHtml(evt.content)}</span>`;
+          return;
+        }
+        // done 类型：循环自然结束
+      } catch (e) {
+        // 非 JSON 纯文本，直接追加
+        if (payload && payload !== '[DONE]') {
+          fullText += payload;
+          bubbleEl.textContent = fullText;
+        }
+      }
+    }
+  }
+
+  if (!fullText) {
+    bubbleEl.textContent = '(空回复)';
+  }
+  updateSessionTitle(text);
+}
+
+// ===== 工具调用时间线 =====
+// 【新增功能】模型调用的每个工具按先后顺序线性显示在 AI 回答上方：
+// 时间线容器挂在 AI 消息 content 顶部，流式时逐步追加（执行中→完成），
+// 普通模式和历史回显时一次性渲染完整轨迹。
+// 数据来源：流式 tool_call/tool_result 事件；普通模式响应体 tool_trace；
+// 历史回显用树形存储里的 assistant.tool_calls + tool 结果配对。
+
+function ensureToolTimeline(contentEl) {
+  // 惰性创建时间线容器（放在文本气泡之前），返回 null 表示已存在
+  let timeline = contentEl.querySelector('.tool-timeline');
+  if (!timeline) {
+    timeline = document.createElement('div');
+    timeline.className = 'tool-timeline';
+    contentEl.insertBefore(timeline, contentEl.firstChild);
+  }
+  return timeline;
+}
+
+function addToolStep(timeline, name, args, status) {
+  // 追加一个步骤节点；status: running(执行中) | done(完成) | blocked(被拦截)
+  const step = document.createElement('div');
+  step.className = 'tool-step ' + (status || 'running');
+  step.dataset.toolName = name;
+  let argsHtml = '';
+  if (args && Object.keys(args).length) {
+    const argStr = JSON.stringify(args);
+    const shown = argStr.length > 200 ? argStr.slice(0, 200) + '…' : argStr;
+    argsHtml = `<div class="tool-step-detail"><span class="label">参数 </span>${escapeHtml(shown)}</div>`;
+  }
+  step.innerHTML = `
+    <div class="tool-step-header">
+      <span class="tool-step-name">${escapeHtml(name)}</span>
+      <span class="tool-step-time">${status === 'running' ? '执行中…' : ''}</span>
+    </div>
+    ${argsHtml}`;
+  timeline.appendChild(step);
+  const container = timeline.closest('.messages');
+  if (container) container.scrollTop = container.scrollHeight;
+  return step;
+}
+
+function completeToolStep(timeline, name, result, latencyMs, blocked) {
+  // 把该工具最后一个"执行中"步骤标记为完成（同名工具多次调用按顺序配对）
+  const steps = [...timeline.querySelectorAll('.tool-step.running')]
+    .filter(s => s.dataset.toolName === name);
+  const step = steps[steps.length - 1];
+  if (!step) return;
+  const cls = blocked ? 'blocked' : 'done';
+  const timeText = latencyMs != null ? (latencyMs / 1000).toFixed(2) + 's' : '';
+  step.className = 'tool-step ' + cls;
+  step.querySelector('.tool-step-time').textContent = timeText;
+
+  let detail = '';
+  if (result !== undefined && result !== null && result !== '') {
+    const text = String(result);
+    const shown = text.length > 500 ? text.slice(0, 500) + '…' : text;
+    const colorCls = blocked ? 'blocked-text' : 'result-text';
+    detail = `<div class="tool-step-detail"><span class="label">结果 </span><span class="${colorCls}">${escapeHtml(shown)}</span></div>`;
+  } else if (blocked) {
+    detail = `<div class="tool-step-detail"><span class="blocked-text">已被拦截，未执行</span></div>`;
+  }
+  step.insertAdjacentHTML('beforeend', detail);
+}
+
+function renderToolTrace(timeline, trace) {
+  // 一次性渲染完整轨迹（普通模式响应 / 历史回显），按数组顺序线性排列
+  for (const t of trace || []) {
+    const step = addToolStep(timeline, t.name, t.args, t.blocked ? 'blocked' : 'done');
+    if (!t.blocked) step.className = 'tool-step done';
+    else step.className = 'tool-step blocked';
+    completeToolStep(timeline, t.name, t.result,
+      t.latency != null ? Math.round(t.latency * 1000) : null, t.blocked);
+  }
+}
+
+// ===== 消息渲染 =====
+function addMessage(role, content) {
+  const container = document.getElementById('messages');
+  const msg = document.createElement('div');
+  msg.className = 'message ' + role;
+  msg.innerHTML = `
+    <div class="message-avatar">${role === 'user' ? 'U' : 'AI'}</div>
+    <div class="message-content">
+      <div class="message-bubble">${content ? escapeHtml(content) : ''}</div>
+    </div>`;
+  container.appendChild(msg);
+  container.scrollTop = container.scrollHeight;
+  return msg;
+}
+
+function showTyping(bubbleEl) {
+  bubbleEl.innerHTML = '<div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>';
+}
+
+function updateSessionTitle(firstMsg) {
+  const title = firstMsg.slice(0, 20) + (firstMsg.length > 20 ? '...' : '');
+  document.getElementById('chatTitle').textContent = title;
+  addSessionToList(state.sessionId, title);
+  saveSessions();
+}
+
+// ===== 模式切换 =====
+function setMode(mode) {
+  state.mode = mode;
+  document.getElementById('modeStream').classList.toggle('active', mode === 'stream');
+  document.getElementById('modeNormal').classList.toggle('active', mode === 'normal');
+  document.getElementById('inputHint').textContent =
+    mode === 'stream' ? '流式模式 · SSE 实时输出' : '普通模式 · 完整返回';
+}
+
+// ===== 设置 =====
+function openSettings() {
+  document.getElementById('settingApiBase').value = state.apiBase;
+  document.getElementById('settingSessionId').value = state.sessionId || '';
+  document.getElementById('settingsOverlay').classList.add('open');
+}
+
+function closeSettings() {
+  document.getElementById('settingsOverlay').classList.remove('open');
+}
+
+function saveSettings() {
+  state.apiBase = document.getElementById('settingApiBase').value.trim();
+  localStorage.setItem('agent_api_base', state.apiBase);
+  const customId = document.getElementById('settingSessionId').value.trim();
+  if (customId) {
+    state.sessionId = customId;
+    document.getElementById('chatSessionId').textContent = customId;
+  }
+  closeSettings();
+  checkConnection();
+}
+
+// ===== 工具函数 =====
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function formatTime(ts) {
+  const d = new Date(ts);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) {
+    return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
+  }
+  return (d.getMonth() + 1) + '/' + d.getDate();
+}
+
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+}
+
+// 点击遮罩关闭设置
+document.getElementById('settingsOverlay').addEventListener('click', (e) => {
+  if (e.target.id === 'settingsOverlay') closeSettings();
+});
+</script>
+</body>
+</html>

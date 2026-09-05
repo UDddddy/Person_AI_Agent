@@ -1,0 +1,17 @@
+# 阶段9 · docker-compose.yml
+# 一键启动 Personal AI Agent
+
+services:
+  api:
+    build: .
+    container_name: personal-ai-agent
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

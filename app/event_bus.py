@@ -12,6 +12,7 @@ EVENT_AGENT_START = "agent_start"
 EVENT_TOOL_CALL = "tool_call"
 EVENT_TOOL_RESULT = "tool_result"
 EVENT_MESSAGE_UPDATE = "message_update"
+EVENT_LLM_RESULT = "llm_result"  # 阶段9：LLM 调用完成，带 usage 和延迟
 
 
 class EventBus:
